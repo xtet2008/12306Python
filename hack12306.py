@@ -16,7 +16,9 @@ Example:
     python hack12306.py
 """
 
+import sys
 from splinter.browser import Browser
+from splinter.driver import webdriver
 from configparser import ConfigParser
 from time import sleep
 import traceback
@@ -25,6 +27,14 @@ import codecs
 import argparse
 import os
 import time
+from utilities import send_email, send_message
+import sys
+
+# reload(sys)  # for python2
+# sys.setdefaultencoding('utf-8')
+
+cp = ConfigParser()
+
 
 class hackTickets(object):
     """docstring for hackTickets"""
@@ -35,7 +45,6 @@ class hackTickets(object):
         # 补充文件路径，获得config.ini的绝对路径，默认为主程序当前目录
         path = os.path.join(os.getcwd(), config_file)
 
-        cp = ConfigParser()
         try:
             # 指定读取config.ini编码格式，防止中文乱码（兼容windows）
             cp.readfp(codecs.open(config_file, "r", "utf-8-sig"))
@@ -73,8 +82,12 @@ class hackTickets(object):
         self.buy = cp.get("urlInfo", "buy")
 
         # 席别
-        seat_type = cp.get("confirmInfo", "seat_type")
+        seat_type = cp.get("confirmInfo", "seat_type").encode('utf-8')
         self.seatType = self.seatMap[seat_type] if seat_type in self.seatMap else ""
+
+        # 自动提交订单
+        self.auto_confirm = cp.get("confirmInfo", "auto_confirm")
+
 
         # 浏览器名称：目前使用的是chrome
         self.driver_name = cp.get("pathInfo", "driver_name")
@@ -192,10 +205,10 @@ class hackTickets(object):
 
     def specifyTrainNo(self):
         count=0
+        self.searchMore();  # 勾选车次类型，发车时间
         while self.driver.url == self.ticket_url:
-            # 勾选车次类型，发车时间
-            self.searchMore();
             sleep(0.05)
+
             self.driver.find_by_text(u"查询").click()
             count += 1
             print(u"循环点击查询... 第 %s 次" % count)
@@ -210,9 +223,8 @@ class hackTickets(object):
     
     def buyOrderZero(self):
         count=0
+        self.searchMore();  # 勾选车次类型，发车时间
         while self.driver.url == self.ticket_url:
-            # 勾选车次类型，发车时间
-            self.searchMore();
             sleep(0.05)
             self.driver.find_by_text(u"查询").click()
             count += 1
@@ -257,7 +269,7 @@ class hackTickets(object):
         t = time.clock()
         try:
             print(u"购票页面开始...")
-            
+
             # 填充查询条件
             self.preStart()
             
@@ -274,24 +286,41 @@ class hackTickets(object):
             print(u"开始预订...")
             
             sleep(0.8)
-            # 选择用户
-            self.selUser()
-            # 确认订单
-            self.confirmOrder()
-            # 提交订单
-            self.submitOrder()
-            # 确认选座
-            self.confirmSeat()
+
+            self.selUser()  # 选择用户
+            self.confirmOrder()  # 确认席别
+            self.submitOrder()  # 提交订单
+            if int(self.auto_confirm):
+                self.confirmSeat()  # 确认订单
+
+            send_email(
+                to_list=['xtet2008@126.com', '543827286@qq.com'],
+                subject='你的票已经订到了，请在30分钟确认订单并付款',
+                content='{}，{}，从{}到{}的票已订到，请在30分钟内付款完成订单。'.format(
+                    self.users[0], self.dtime, cp.get("cookieInfo", "starts"), cp.get("cookieInfo", "ends")
+                ),
+                template=None,
+                files=None
+
+            )  # 订票成功，发邮件通知
+            send_message(msg='{}{}号{}到{}票请30分钟内付款'.format(
+                    self.users[0], self.dtime.split('-')[2], cp.get("cookieInfo", "starts"), cp.get("cookieInfo", "ends")
+                )
+            )  # 订票成功，发短信通知
 
             print(time.clock() - t)
-
         except Exception as e:
             print(e)
+            sleep(1)
+            self.driver.visit(self.ticket_url)
+            self.buyTickets();
 
     """入口函数"""
     def start(self):
         # 初始化驱动
         self.driver=Browser(driver_name=self.driver_name,executable_path=self.executable_path)
+
+
         # 初始化浏览器窗口大小
         self.driver.driver.set_window_size(1400, 1000)
 
