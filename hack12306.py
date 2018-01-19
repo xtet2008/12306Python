@@ -82,7 +82,7 @@ class hackTickets(object):
         self.buy = cp.get("urlInfo", "buy")
 
         # 席别
-        seat_type = cp.get("confirmInfo", "seat_type").encode('utf-8')
+        seat_type = cp.get("confirmInfo", "seat_type")
         self.seatType = self.seatMap[seat_type] if seat_type in self.seatMap else ""
 
         # 自动提交订单
